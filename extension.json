@@ -1,0 +1,17 @@
+{
+        "name": "wiki.freifunk.net helpers",
+        "author": "sarumpaet",
+        "url": "https://wiki.freifunk.net",
+        "description": "Freifunk wiki helper functions",
+        "type": "parserhook",
+        "requires": {
+                "MediaWiki": ">= 1.35.0"
+        },
+        "AutoloadClasses": {
+                "FFWikiHelpers": "FFWikiHelpers.php"
+        },
+        "Hooks": {
+                "ParserFirstCallInit": "FFWikiHelpers::onParserFirstCallInit"
+        },
+        "manifest_version": 2
+}
