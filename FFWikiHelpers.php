@@ -16,15 +16,15 @@ class FFWikiHelpers
 	public static function owmGetUrl($url)
 	{
 		$id = "owmknoten_" . $url;
-		global $wgMemc;
-		$res = $wgMemc->get($id);
-		if ($res === false) {
+		//global $wgMemc;
+		//$res = $wgMemc->get($id);
+		//if ($res === false) {
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			$fp = @fopen($url, "r", false, $ctx);
 			if ($fp === false) return "";
 			$res = stream_get_contents($fp);
-			$wgMemc->set($id, $res, 86400);
-		}
+		//	$wgMemc->set($id, $res, 86400);
+		//}
 		return $res;
 	}
 
@@ -107,15 +107,15 @@ class FFWikiHelpers
 	public static function ffcaGetUrl($url)
 	{
 		$id = "ffcaib_" . $url;
-		global $wgMemc;
-		$res = $wgMemc->get($id);
-		if ($res === false) {
+		//global $wgMemc;
+		//$res = $wgMemc->get($id);
+		//if ($res === false) {
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			$fp = @fopen($url, "r", false, $ctx);
 			if (!$fp) throw new Exception("Kann ffcommunityapiinfobox-JSON nicht laden");
 			$res = stream_get_contents($fp);
-			$wgMemc->set($id, $res, 86400);
-		}
+		//	$wgMemc->set($id, $res, 86400);
+		//}
 		return $res;
 	}
 
@@ -159,7 +159,7 @@ class FFWikiHelpers
 
 	public static function preisvergleichGetUrl($url)
 	{
-		global $wgMemc;
+		//global $wgMemc;
 		$filename = "/dev/shm/preisvergleich_" . str_replace(".", "%2E", urlencode($url));
 		$res = "?";
 		$outdated = true;
@@ -168,18 +168,18 @@ class FFWikiHelpers
 			$outdated = (time() - filemtime($filename) > rand(24 * 2 * 3600, 24 * 5 * 3600));
 		}
 		if (($res === "?") || $outdated) {
-			if ($wgMemc->get("preisvergleich_blocked") === "true") {
-				return $res;
-			}
-			$requestsLastMin = $wgMemc->incrWithInit("preisvergleich_throttle", 60, 1, 1);
-			if ($requestsLastMin > 5) {
-				// throttle to max 5 requests per minute
-				return $res;
-			}
-			if ($requestsLastMin > 1) {
-				// not great but easy way to throttle a bit
-				sleep(2);
-			}
+			//if ($wgMemc->get("preisvergleich_blocked") === "true") {
+			//	return $res;
+			//}
+			//$requestsLastMin = $wgMemc->incrWithInit("preisvergleich_throttle", 60, 1, 1);
+			//if ($requestsLastMin > 5) {
+			//	// throttle to max 5 requests per minute
+			//	return $res;
+			//}
+			//if ($requestsLastMin > 1) {
+			//	// not great but easy way to throttle a bit
+			//	sleep(2);
+			//}
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			set_error_handler(function () {}); // avoid 404 warnings, etc.
 			$fp = fopen($url, "r", false, $ctx);
@@ -188,7 +188,7 @@ class FFWikiHelpers
 			$newres = stream_get_contents($fp);
 			if (strlen($newres) < 500) {
 				// in case we're blocked by GH, no further requests for 10 minutes
-				$wgMemc->set("preisvergleich_blocked", "true", 600);
+			//	$wgMemc->set("preisvergleich_blocked", "true", 600);
 				return $res;
 			}
 			$res = $newres;
