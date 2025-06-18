@@ -1,7 +1,24 @@
 <?php
 
+use Wikimedia\ObjectCache\WANObjectCache;
+use MediaWiki\MediaWikiServices;
+use Parser;
+use PPFrame;
+use DOMDocument;
+use DOMXPath;
+use Exception;
+
 class FFWikiHelpers
 {
+	/**
+	 * Get the WANObjectCache instance
+	 *
+	 * @return WANObjectCache
+	 */
+	private static function getCache()
+	{
+		return MediaWikiServices::getInstance()->getMainWANObjectCache();
+	}
 
 	public static function onParserFirstCallInit(Parser $parser)
 	{
@@ -16,30 +33,34 @@ class FFWikiHelpers
 	public static function owmGetUrl($url)
 	{
 		$id = "owmknoten_" . $url;
-		//global $wgMemc;
-		//$res = $wgMemc->get($id);
-		//if ($res === false) {
+		$cache = self::getCache();
+		$res = $cache->get($cache->makeKey($id));
+		if ($res === false) {
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			$fp = @fopen($url, "r", false, $ctx);
-			if ($fp === false) return "";
+			if ($fp === false)
+				return "";
 			$res = stream_get_contents($fp);
-		//	$wgMemc->set($id, $res, 86400);
-		//}
+			$cache->set($cache->makeKey($id), $res, $cache->TTL_DAY);
+		}
 		return $res;
 	}
 
 	public static function getOWMNodeNames($latlon)
 	{
 		$latlon = explode(",", $latlon);
-		if (!is_numeric($latlon[0]) || !is_numeric($latlon[1])) return array();
+		if (!is_numeric($latlon[0]) || !is_numeric($latlon[1]))
+			return array();
 		$url = "https://api.openwifimap.net/view_nodes_spatial?bbox=" . ($latlon[1] - (0.001)) . "," . ($latlon[0] - (0.0005)) . "," . ($latlon[1] + (0.001)) . "," . ($latlon[0] + (0.0005));
 		$json = json_decode(self::owmGetUrl($url));
-		if (!$json) return [];
+		if (!$json)
+			return [];
 		$res = array();
 		foreach ($json->rows as $row) {
 			$datea = date_parse($row->value->mtime);
 			$mtime = mktime($datea['hour'], $datea['minute'], $datea['second'], $datea['month'], $datea['day'], $datea['year']);
-			if ((time() - $mtime) > (7 * 24 * 60 * 60)) continue;
+			if ((time() - $mtime) > (7 * 24 * 60 * 60))
+				continue;
 			array_push($res, $row->id);
 		}
 		natcasesort($res);
@@ -55,7 +76,8 @@ class FFWikiHelpers
 			$nodes = self::getOWMNodeNames($latlon);
 			foreach ($nodes as $node) {
 				$shortNode = str_replace(".olsr", "", $node);
-				if ($wikiCode != "") $wikiCode .= ", ";
+				if ($wikiCode != "")
+					$wikiCode .= ", ";
 				$monitor = "https://monitor.berlin.freifunk.net/host.php?h=" . $shortNode;
 				if (strpos(self::owmGetUrl($monitor), "Unknown host") !== false) {
 					$monitor = "";
@@ -67,7 +89,8 @@ class FFWikiHelpers
 					"[https://hopglass.berlin.freifunk.net/#!v:m;n:" . $node . " Hopglass]" .
 					"$monitor)[[Hat Knoten::$shortNode|]]";
 			}
-			if ($wikiCode == "") $wikiCode = "keine Knoten online";
+			if ($wikiCode == "")
+				$wikiCode = "keine Knoten online";
 			$output = $parser->recursiveTagParse($wikiCode, $frame);
 		} catch (Exception $e) {
 			return "Fehler owmknoten-Tag";
@@ -82,10 +105,12 @@ class FFWikiHelpers
 			$nodes = explode(",", trim($input));
 			$url = "https://hopglass-backend.hamburg.freifunk.net/nodelist.json";
 			$json = json_decode(self::owmGetUrl($url));
-			if (!is_object($json)) throw new Exception("Hamburg JSON invalid");
+			if (!is_object($json))
+				throw new Exception("Hamburg JSON invalid");
 			$wikiCode = "";
 			foreach ($nodes as $node) {
-				if ($wikiCode != "") $wikiCode .= ", ";
+				if ($wikiCode != "")
+					$wikiCode .= ", ";
 				foreach ($json->nodes as $row) {
 					if (strcasecmp($row->name ?? "", $node) == 0) {
 						$wikiCode .= "[https://map.hamburg.freifunk.net/#!n:" . $row->id . " $node]";
@@ -93,7 +118,8 @@ class FFWikiHelpers
 					}
 				}
 			}
-			if ($wikiCode == "") $wikiCode = "Keine Knoten online";
+			if ($wikiCode == "")
+				$wikiCode = "Keine Knoten online";
 			$output = $parser->recursiveTagParse($wikiCode, $frame);
 		} catch (Exception $e) {
 			return "Fehler hamburgknoten-Tag";
@@ -107,15 +133,16 @@ class FFWikiHelpers
 	public static function ffcaGetUrl($url)
 	{
 		$id = "ffcaib_" . $url;
-		//global $wgMemc;
-		//$res = $wgMemc->get($id);
-		//if ($res === false) {
+		$cache = self::getCache();
+		$res = $cache->get($cache->makeKey($id));
+		if ($res === false) {
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			$fp = @fopen($url, "r", false, $ctx);
-			if (!$fp) throw new Exception("Kann ffcommunityapiinfobox-JSON nicht laden");
+			if (!$fp)
+				throw new Exception("Kann ffcommunityapiinfobox-JSON nicht laden");
 			$res = stream_get_contents($fp);
-		//	$wgMemc->set($id, $res, 86400);
-		//}
+			$cache->set($cache->makeKey($id), $res, $cache->TTL_DAY);
+		}
 		return $res;
 	}
 
@@ -124,12 +151,14 @@ class FFWikiHelpers
 		try {
 			$input = trim($input);
 			$json = json_decode(self::ffcaGetUrl($input));
-			if (!$json) return "Fehler ffcommunityapiinfobox-Tag (json fehlerhaft)";
+			if (!$json)
+				return "Fehler ffcommunityapiinfobox-Tag (json fehlerhaft)";
 			if (isset($json->location->geoCode->lat) && isset($json->location->geoCode->lon)) {
 				$coor = $json->location->geoCode->lat . "," . $json->location->geoCode->lon;
 			} else if (isset($json->location->lat) && isset($json->location->lon)) {
 				$coor = $json->location->lat . "," . $json->location->lon;
-			} else return "Fehler ffcommunityapiinfobox-Tag (location.geoCode.lat/lon fehlt)";
+			} else
+				return "Fehler ffcommunityapiinfobox-Tag (location.geoCode.lat/lon fehlt)";
 			$wikiCode = "{{Infobox Freifunk-Community\n";
 			$wikiCode .= "| Name = " . $json->name . "\n";
 			$wikiCode .= "| Koordinaten = " . $coor . "\n";
@@ -144,7 +173,8 @@ class FFWikiHelpers
 					", " . @$json->location->address->zipcode .
 					" " . @$json->location->City . "\n";
 			}
-			if (isset($json->url)) $wikiCode .= "| Homepage = " . $json->url . "\n";
+			if (isset($json->url))
+				$wikiCode .= "| Homepage = " . $json->url . "\n";
 			$wikiCode .= "}}\n";
 			$wikiCode .= "[[Hat FFCommunityAPIFile::$input|]]\n";
 			$output = $parser->recursiveTagParse($wikiCode, $frame);
@@ -159,7 +189,6 @@ class FFWikiHelpers
 
 	public static function preisvergleichGetUrl($url)
 	{
-		//global $wgMemc;
 		$filename = "/dev/shm/preisvergleich_" . str_replace(".", "%2E", urlencode($url));
 		$res = "?";
 		$outdated = true;
@@ -168,27 +197,20 @@ class FFWikiHelpers
 			$outdated = (time() - filemtime($filename) > rand(24 * 2 * 3600, 24 * 5 * 3600));
 		}
 		if (($res === "?") || $outdated) {
-			//if ($wgMemc->get("preisvergleich_blocked") === "true") {
-			//	return $res;
-			//}
-			//$requestsLastMin = $wgMemc->incrWithInit("preisvergleich_throttle", 60, 1, 1);
-			//if ($requestsLastMin > 5) {
-			//	// throttle to max 5 requests per minute
-			//	return $res;
-			//}
-			//if ($requestsLastMin > 1) {
-			//	// not great but easy way to throttle a bit
-			//	sleep(2);
-			//}
+			$cache = self::getCache();
+			if ($cache->get($cache->makeKey('preisvergleich_blocked')) === "true") {
+				return $res;
+			}
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			set_error_handler(function () {}); // avoid 404 warnings, etc.
 			$fp = fopen($url, "r", false, $ctx);
 			restore_error_handler();
-			if ($fp === false) return $res;
+			if ($fp === false)
+				return $res;
 			$newres = stream_get_contents($fp);
 			if (strlen($newres) < 500) {
 				// in case we're blocked by GH, no further requests for 10 minutes
-			//	$wgMemc->set("preisvergleich_blocked", "true", 600);
+				$cache->set($cache->makeKey('preisvergleich_blocked'), "true", 600);
 				return $res;
 			}
 			$res = $newres;
@@ -202,7 +224,7 @@ class FFWikiHelpers
 	{
 		$dom = new DOMDocument();
 		$result = "-";
-		if ($html !== "?") {
+		if ($html !== NULL) {
 			@$dom->loadHTML($html);
 		} else {
 			$result = "ca. ?€";
@@ -251,7 +273,7 @@ class FFWikiHelpers
 
 
 if (!defined('MEDIAWIKI')) {
-	print("this is broken");
+	print ("this is broken");
 	$nodes = FFWikiHelpers::getOWMNodeNames("52.5444,13.35256");
 	foreach ($nodes as $node) {
 		echo $node . "\n";
