@@ -1,12 +1,8 @@
 <?php
 
+use Wikimedia\ObjectCache\BagOStuff;
 use Wikimedia\ObjectCache\WANObjectCache;
 use MediaWiki\MediaWikiServices;
-use Parser;
-use PPFrame;
-use DOMDocument;
-use DOMXPath;
-use Exception;
 
 class FFWikiHelpers
 {
@@ -18,6 +14,16 @@ class FFWikiHelpers
 	private static function getCache()
 	{
 		return MediaWikiServices::getInstance()->getMainWANObjectCache();
+	}
+
+	/**
+	 * Get the main cluster-local cache (what $wgMemc used to be)
+	 *
+	 * @return BagOStuff
+	 */
+	private static function getLocalClusterCache()
+	{
+		return MediaWikiServices::getInstance()->getObjectCacheFactory()->getLocalClusterInstance();
 	}
 
 	public static function onParserFirstCallInit(Parser $parser)
@@ -41,7 +47,7 @@ class FFWikiHelpers
 			if ($fp === false)
 				return "";
 			$res = stream_get_contents($fp);
-			$cache->set($cache->makeKey($id), $res, $cache->TTL_DAY);
+			$cache->set($cache->makeKey($id), $res, WANObjectCache::TTL_DAY);
 		}
 		return $res;
 	}
@@ -141,7 +147,7 @@ class FFWikiHelpers
 			if (!$fp)
 				throw new Exception("Kann ffcommunityapiinfobox-JSON nicht laden");
 			$res = stream_get_contents($fp);
-			$cache->set($cache->makeKey($id), $res, $cache->TTL_DAY);
+			$cache->set($cache->makeKey($id), $res, WANObjectCache::TTL_DAY);
 		}
 		return $res;
 	}
@@ -197,9 +203,18 @@ class FFWikiHelpers
 			$outdated = (time() - filemtime($filename) > rand(24 * 2 * 3600, 24 * 5 * 3600));
 		}
 		if (($res === "?") || $outdated) {
-			$cache = self::getCache();
+			$cache = self::getLocalClusterCache();
 			if ($cache->get($cache->makeKey('preisvergleich_blocked')) === "true") {
 				return $res;
+			}
+			$requestsLastMin = $cache->incrWithInit($cache->makeKey('preisvergleich_throttle'), 60, 1, 1);
+			if ($requestsLastMin > 5) {
+				// throttle to max 5 requests per minute
+				return $res;
+			}
+			if ($requestsLastMin > 1) {
+				// not great but easy way to throttle a bit
+				sleep(2);
 			}
 			$ctx = stream_context_create(["http" => ["method" => "GET"]]);
 			set_error_handler(function () {}); // avoid 404 warnings, etc.
@@ -224,7 +239,7 @@ class FFWikiHelpers
 	{
 		$dom = new DOMDocument();
 		$result = "-";
-		if ($html !== NULL) {
+		if ($html !== "?") {
 			@$dom->loadHTML($html);
 		} else {
 			$result = "ca. ?€";
@@ -232,12 +247,8 @@ class FFWikiHelpers
 		$xpath = new DOMXPath($dom);
 		$prices = $xpath->query("//span[@class='gh_price']");
 		foreach ($prices as $price) {
-			try {
-				$value = $price->firstChild->nodeValue;
-				if (!(substr($value, 0, 4) === "€ ")) {
-					continue;
-				}
-			} catch (Exception $e) {
+			$value = $price->firstChild?->nodeValue ?? "";
+			if (!(substr($value, 0, 4) === "€ ")) {
 				continue;
 			}
 			$value = substr($value, 4);
